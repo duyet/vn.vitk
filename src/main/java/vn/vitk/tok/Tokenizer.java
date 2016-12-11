@@ -67,7 +67,7 @@ public class Tokenizer implements Serializable {
 	private int counter = 0;
 	
 	private boolean verbose = false;
-	
+
 	/**
 	 * Creates a Vietnamese tokenizer.
 	 * @param master
@@ -76,6 +76,7 @@ public class Tokenizer implements Serializable {
 	 */
 	public Tokenizer(String master, String lexiconFileName, String regexpFileName) {
 		jsc = SparkContextFactory.create(master);
+
 		lexicon = new Lexicon().load(lexiconFileName);
 		if (verbose) 
 			System.out.println("#(nodes of the lexicon) = " + lexicon.numNodes());
@@ -91,7 +92,25 @@ public class Tokenizer implements Serializable {
 			}
 		}
 	}
-	
+
+	public Tokenizer(JavaSparkContext _jsc, String lexiconFileName, String regexpFileName) {
+		jsc = _jsc;
+		lexicon = new Lexicon().load(lexiconFileName);
+		if (verbose) 
+			System.out.println("#(nodes of the lexicon) = " + lexicon.numNodes());
+		
+		List<String> lines = jsc.textFile(regexpFileName).collect();
+		for (String line : lines) {
+			line = line.trim();
+			if (!line.startsWith("#")) { // ignore comment lines
+				String[] s = line.split("\\s+");
+				if (s.length == 2) {
+					patterns.put(s[0], Pattern.compile(s[1]));
+				}
+			}
+		}
+	}
+
 	/**
 	 * Creates a Vietnamese tokenizer.
 	 * @param master
@@ -103,9 +122,19 @@ public class Tokenizer implements Serializable {
 		this(master, lexiconFileName, regexpFileName);
 		bigram = new Bigrams(bigramFileName);
 	}
+	public Tokenizer(JavaSparkContext _jsc, String lexiconFileName, String regexpFileName, String bigramFileName) {
+		this(_jsc, lexiconFileName, regexpFileName);
+		bigram = new Bigrams(bigramFileName);
+	}
 
 	public Tokenizer(String master, String lexiconFileName, String regexpFileName, String whitespaceModelFileName, boolean lr) {
 		this(master, lexiconFileName, regexpFileName);
+		classifier = new WhitespaceClassifier(lexicon, patterns);
+		model = classifier.load(whitespaceModelFileName);
+		contexts = jsc.accumulator(new LinkedList<WhitespaceContext>(), new WhitespaceContextAccumulatorParam());
+	}
+	public Tokenizer(JavaSparkContext _jsc, String lexiconFileName, String regexpFileName, String whitespaceModelFileName, boolean lr) {
+		this(_jsc, lexiconFileName, regexpFileName);	
 		classifier = new WhitespaceClassifier(lexicon, patterns);
 		model = classifier.load(whitespaceModelFileName);
 		contexts = jsc.accumulator(new LinkedList<WhitespaceContext>(), new WhitespaceContextAccumulatorParam());
